@@ -10,7 +10,7 @@
 模型: ~/models/asr/whisper-large-v3, ~/models/asr/campplus, ~/models/translation/hy-mt2-7b
 翻译服务: 需先启动 llama-server (hy-mt2-7b @ 127.0.0.1:8888), 本工具会自动拉起/复用
 """
-import argparse, json, os, re, shutil, subprocess, sys, time
+import argparse, json, os, random, re, shutil, socket, subprocess, sys, time
 
 HOME = os.path.expanduser("~")
 PY = f"{HOME}/venvs/subtitle-pipeline/bin/python3"
@@ -29,28 +29,46 @@ def sh(cmd, **kw):
     return r.stdout
 
 # ---------- 0. 服务管理 ----------
-def server_ready():
+def server_ready(port, check_model=False):
     try:
-        r = subprocess.run(["curl", "-s", "-m", "2", f"http://127.0.0.1:{PORT}/v1/models"],
+        r = subprocess.run(["curl", "-s", "-m", "2", f"http://127.0.0.1:{port}/v1/models"],
                            capture_output=True, text=True)
-        return '"data"' in r.stdout
+        if '"data"' not in r.stdout:
+            return False
+        # 端口可能常驻其他 llama-server 实例, 复用前必须确认是本工具的 Hy-MT2
+        return (not check_model) or ("hy-mt" in r.stdout.lower())
     except Exception:
         return False
 
+def port_free(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
 def ensure_server():
-    if server_ready():
+    global PORT
+    if server_ready(8888, check_model=True):
+        PORT = 8888
         print("[0/6] 翻译服务已在运行 (8888)")
         return None
+    if server_ready(8888):
+        print("      8888 被其他服务占用, 换端口 ...")
     print("[0/6] 启动翻译服务 Hy-MT2-7B ...")
-    proc = subprocess.Popen([SERVER_BIN, "--model", MODEL_MT, "--n-gpu-layers", "999",
-        "--ctx-size", "8192", "--flash-attn", "on", "--host", "127.0.0.1", "--port", str(PORT)],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(60):
-        time.sleep(2)
-        if server_ready():
-            print("      服务就绪")
-            return proc
-    print("[ERR] 翻译服务启动超时", file=sys.stderr); sys.exit(1)
+    # 8888 附近常被占 (用户环境), 直接随机选不常用段 20000-32767 (避开 ephemeral)
+    for _ in range(5):
+        port = random.randint(20000, 32767)
+        if not port_free(port):
+            continue
+        proc = subprocess.Popen([SERVER_BIN, "--model", MODEL_MT, "--n-gpu-layers", "999",
+            "--ctx-size", "8192", "--flash-attn", "on", "--host", "127.0.0.1", "--port", str(port)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(60):
+            time.sleep(2)
+            if server_ready(port, check_model=True):
+                PORT = port
+                print(f"      服务就绪 (端口 {port})")
+                return proc
+        proc.terminate()
+    print("[ERR] 翻译服务启动失败 (多次换端口均超时)", file=sys.stderr); sys.exit(1)
 
 # ---------- 1. 抽音频 ----------
 def extract_audio(video, wav):
@@ -309,7 +327,7 @@ def main():
         if srv:
             print("停止翻译服务 ...")
             srv.terminate()
-    print("\n✅ 全流程完成")
+    print("\n[OK] 全流程完成")
 
 if __name__ == "__main__":
     main()
