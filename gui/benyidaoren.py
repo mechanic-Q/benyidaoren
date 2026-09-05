@@ -9,7 +9,6 @@
 """
 import os
 import re
-import shlex
 import sys
 
 from PySide6.QtCore import QProcess, Qt, QTimer, Signal
@@ -35,12 +34,18 @@ from PySide6.QtWidgets import (
 WSL_EXE = r"C:\Windows\System32\wsl.exe"
 DISTRO = "Ubuntu"
 SCRIPT = "/home/lmr/tools/ja2zh_subtitle/ja2zh_subtitle.py"
+# 预检/执行脚本常驻 WSL 侧, GUI 只以静态 argv 调用——wsl.exe 传参会失真含 $变量/
+# 双引号/分号 的复杂命令串 (2026-09-05 实测: $p 被吃空致全检假 MISS), 脚本进
+# Linux 文件系统后 bash 直接读文件, 语法不受限。
+HOST_DIR = "/home/lmr/tools/ja2zh_subtitle/gui/host"
+PREFLIGHT_SH = HOST_DIR + "/preflight.sh"
+RUN_ONE_SH = HOST_DIR + "/run_one.sh"
 CREATE_NO_WINDOW = 0x08000000
 
 STAGES = ["翻译服务", "抽取音频", "ASR 说话人", "性别判定", "合并段落", "时间轴精修", "翻译"]
 VIDEO_EXT = (".mp4", ".mkv", ".ts", ".avi", ".mov", ".webm", ".flv", ".wmv")
 
-# 06 票全检清单: (标签, wsl 内路径)
+# 06 票全检清单: (标签, wsl 内路径) — 错误提示的名称映射; 实际检测在 host/preflight.sh
 HOST_CHECKS = [
     ("venv python", "/home/lmr/venvs/subtitle-pipeline/bin/python3"),
     ("whisper 模型", "/home/lmr/models/asr/whisper-large-v3"),
@@ -48,13 +53,6 @@ HOST_CHECKS = [
     ("翻译模型", "/home/lmr/models/translation/hy-mt2-7b/Hy-MT2-7B-Q4_K_M.gguf"),
     ("llama-server", "/home/lmr/projects/llama-dflash2/llama.cpp/build/bin/llama-server"),
 ]
-PREFLIGHT_SH = (
-    'for p in ' + " ".join('"%s"' % p for _, p in HOST_CHECKS) + '; do '
-    '[ -e "$p" ] && echo "OK $p" || echo "MISS $p"; done; '
-    'curl -sm2 http://127.0.0.1:8888/v1/models | grep -qi "hy-mt" && echo "SRV hy-mt@8888" || '
-    '(curl -sm2 http://127.0.0.1:8888/v1/models >/dev/null 2>&1 && echo "SRV other@8888" '
-    '|| echo "SRV free")'
-)
 
 ACCENT = "#4a8cff"
 GREEN = "#3ddc97"
@@ -159,6 +157,8 @@ class MainWindow(QMainWindow):
         self.q_run = QProcess(self)
         for q in (self.q_light, self.q_check, self.q_conv, self.q_run):
             quiet(q)
+            # stderr 并入 stdout: 流水线 [ERR] 全打在 stderr, 不合并则日志区永远空白
+            q.setProcessChannelMode(QProcess.MergedChannels)
 
         # ---- UI ----
         central = QWidget()
@@ -503,7 +503,7 @@ class MainWindow(QMainWindow):
     # ---------------- 全检 (06: 开始转换时) ----------------
     def full_check(self):
         self.q_check.finished.connect(self.on_check_done, Qt.UniqueConnection)
-        self.q_check.start(WSL_EXE, ["-d", DISTRO, "--", "bash", "-c", PREFLIGHT_SH])
+        self.q_check.start(WSL_EXE, ["-d", DISTRO, "--", "bash", PREFLIGHT_SH])
 
     def on_check_done(self, code, _status):
         try:
@@ -557,11 +557,10 @@ class MainWindow(QMainWindow):
         wp = bytes(self.q_conv.readAllStandardOutput()).decode("utf-8", "replace").strip()
         task["wsl"] = wp
         append_log(self.log, f"[$] wslpath: {wp}")
-        cmd = f"python3 {shlex.quote(SCRIPT)} {shlex.quote(wp)} --keep-ja"
         self.run_buf = ""
         self.q_run.finished.connect(self.on_run_done, Qt.UniqueConnection)
         self.q_run.readyReadStandardOutput.connect(self.on_run_out, Qt.UniqueConnection)
-        self.q_run.start(WSL_EXE, ["-d", DISTRO, "--", "bash", "-lc", cmd])
+        self.q_run.start(WSL_EXE, ["-d", DISTRO, "--", "bash", RUN_ONE_SH, wp])
 
     def on_run_out(self):
         buf = bytes(self.q_run.readAllStandardOutput()).decode("utf-8", "replace")
