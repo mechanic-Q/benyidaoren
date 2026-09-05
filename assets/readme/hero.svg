@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="400" viewBox="0 0 1200 400"
+     role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">本译道人 — 日语视频转中文字幕，全程本地运行</title>
+  <desc id="hero-desc">左侧为项目名与一句话介绍：拖入日语视频，产出中日双语 SRT 字幕，识别、分人、翻译全部在本地完成。右侧为一张字幕文件示意卡：日语原文经过翻译，成为带说话人角色的中文字幕行。</desc>
+
+  <defs>
+    <clipPath id="card-clip">
+      <rect x="660" y="56" width="476" height="288" rx="10"/>
+    </clipPath>
+  </defs>
+
+  <!-- 背景：取自 GUI 主窗口底色 #17181c -->
+  <rect width="1200" height="400" rx="26" fill="#17181c"/>
+
+  <!-- ===== 左侧：标题块 ===== -->
+  <g id="title-block" transform="translate(64 0)">
+    <text x="0" y="98" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="18" letter-spacing="2" fill="#4a8cff">本地离线流水线 · 日语视频 → 中文字幕</text>
+
+    <text x="0" y="176" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="66" font-weight="900" fill="#e8eaed">本译道人</text>
+    <text x="400" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="19" fill="#9aa0a6">benyidaoren</text>
+
+    <text x="0" y="228" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="24" fill="#c9ccd1">把日语视频拖进来，</text>
+    <text x="0" y="262" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+          font-size="24" fill="#c9ccd1">输出可直接挂载的中日双语 SRT 字幕。</text>
+
+    <text x="0" y="316" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="17" fill="#9aa0a6">whisper-large-v3 · CAM++ · Hy-MT2-7B</text>
+    <text x="0" y="344" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+          font-size="17" fill="#9aa0a6">全程本地运行 · 无需联网 · 无需 API Key</text>
+  </g>
+
+  <!-- ===== 右侧：字幕产物卡 ===== -->
+  <g id="project-proof">
+    <rect x="660" y="56" width="476" height="288" rx="10" fill="#232629" stroke="#34383f"/>
+    <g clip-path="url(#card-clip)">
+      <!-- 卡片标题栏 -->
+      <text x="692" y="96" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="18" fill="#e8eaed">EP07_日剧.zh.srt</text>
+      <circle cx="1096" cy="90" r="5" fill="#3ddc97"/>
+      <text x="1084" y="117" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="14" fill="#3ddc97" text-anchor="end">本地生成</text>
+      <line x1="692" y1="130" x2="1104" y2="130" stroke="#34383f"/>
+
+      <!-- 原文行 -->
+      <text x="692" y="158" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="14" fill="#7a8087">00:01:23,450 --> 00:01:26,100 · 原文</text>
+      <text x="692" y="184" font-family="'Hiragino Sans', 'Yu Gothic', 'Meiryo', 'Noto Sans CJK JP', 'PingFang SC', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', sans-serif"
+            font-size="19" fill="#9aa0a6">この企画書、明日までに修正できる？</text>
+
+      <!-- 转换提示 -->
+      <path d="M 700 200 L 700 216 M 695 211 L 700 217 L 705 211" stroke="#4a8cff" stroke-width="2"
+            fill="none" stroke-linecap="round"/>
+      <text x="722" y="214" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="14" fill="#4a8cff">Hy-MT2-7B · 说话人角色感知翻译</text>
+
+      <!-- 中文行 1：女上司 -->
+      <rect x="680" y="228" width="436" height="52" rx="8" fill="#1b1d21" stroke="#34383f"/>
+      <rect x="680" y="228" width="4" height="52" rx="2" fill="#ffd166"/>
+      <text x="700" y="248" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="14" fill="#7a8087">00:01:23,450 --> 00:01:26,100</text>
+      <text x="700" y="270" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'WenQuanYi Micro Hei', sans-serif"
+            font-size="19" fill="#e8eaed">这份企划书，明天之前能改好吗？</text>
+      <rect x="1024" y="238" width="64" height="24" rx="6" fill="#ffd166" opacity="0.16"/>
+      <text x="1056" y="255" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'WenQuanYi Micro Hei', sans-serif"
+            font-size="14" fill="#ffd166" text-anchor="middle">女上司</text>
+
+      <!-- 中文行 2：男下属 -->
+      <rect x="680" y="292" width="436" height="52" rx="8" fill="#1b1d21" stroke="#34383f"/>
+      <rect x="680" y="292" width="4" height="52" rx="2" fill="#4a8cff"/>
+      <text x="700" y="312" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+            font-size="14" fill="#7a8087">00:01:31,020 --> 00:01:34,480</text>
+      <text x="700" y="334" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'WenQuanYi Micro Hei', sans-serif"
+            font-size="19" fill="#e8eaed">明白，我今晚就赶出来。</text>
+      <rect x="1024" y="302" width="64" height="24" rx="6" fill="#4a8cff" opacity="0.18"/>
+      <text x="1056" y="319" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'WenQuanYi Micro Hei', sans-serif"
+            font-size="14" fill="#4a8cff" text-anchor="middle">男下属</text>
+    </g>
+  </g>
+</svg>

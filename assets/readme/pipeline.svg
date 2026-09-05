@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="486" viewBox="0 0 1200 486"
+     role="img" aria-labelledby="pl-title pl-desc">
+  <title id="pl-title">六阶段本地流水线</title>
+  <desc id="pl-desc">从日语视频到中文字幕的六个处理阶段：抽取音频、语音识别与说话人分离、性别判定、合并段落、时间轴精修、角色化翻译，每个阶段标注所用本地模型或工具，最后产出 zh.srt 字幕文件。</desc>
+
+  <!-- 背景 -->
+  <rect width="1200" height="486" rx="26" fill="#17181c"/>
+
+  <!-- 标题行 -->
+  <text x="64" y="66" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="32" font-weight="800" fill="#e8eaed">六阶段全本地流水线</text>
+  <text x="1136" y="64" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="17" fill="#9aa0a6" text-anchor="end">40 分钟视频 ≈ 6 分钟 · NVIDIA GPU</text>
+
+  <!-- 时间线竖线 -->
+  <line x1="80" y1="112" x2="80" y2="404" stroke="#34383f" stroke-width="2"/>
+
+  <!-- 输入 -->
+  <rect x="128" y="96" width="220" height="34" rx="8" fill="#232629" stroke="#34383f"/>
+  <text x="148" y="119" font-family="'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="18" fill="#c9ccd1">输入：日语视频文件</text>
+  <text x="368" y="119" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="16" fill="#7a8087">.mp4 / .mkv / .ts / .avi …</text>
+
+  <!-- 阶段行：y 起点 150，行距 52 -->
+  <!-- 1 抽取音频 -->
+  <circle cx="80" cy="166" r="16" fill="#4a8cff"/>
+  <text x="80" y="172" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="128" y="173" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="21" font-weight="700" fill="#e8eaed">抽取音频</text>
+  <text x="400" y="172" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="18" fill="#9aa0a6">ffmpeg · 16 kHz 单声道 WAV</text>
+
+  <!-- 2 语音识别 + 说话人 -->
+  <circle cx="80" cy="218" r="16" fill="#4a8cff"/>
+  <text x="80" y="224" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="128" y="225" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="21" font-weight="700" fill="#e8eaed">语音识别 + 说话人</text>
+  <text x="400" y="224" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="18" fill="#9aa0a6">whisper-large-v3 词级时间戳 · CAM++ 声纹聚类</text>
+
+  <!-- 3 性别判定 -->
+  <circle cx="80" cy="270" r="16" fill="#4a8cff"/>
+  <text x="80" y="276" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="128" y="277" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="21" font-weight="700" fill="#e8eaed">性别判定</text>
+  <text x="400" y="276" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="18" fill="#9aa0a6">inaSpeechSegmenter · 按说话人投票</text>
+
+  <!-- 4 合并段落 -->
+  <circle cx="80" cy="322" r="16" fill="#4a8cff"/>
+  <text x="80" y="328" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="128" y="329" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="21" font-weight="700" fill="#e8eaed">合并段落</text>
+  <text x="400" y="328" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="18" fill="#9aa0a6">同人相邻段合并 · 整句喂给翻译</text>
+
+  <!-- 5 时间轴精修 -->
+  <circle cx="80" cy="374" r="16" fill="#4a8cff"/>
+  <text x="80" y="380" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="17" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="128" y="381" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="21" font-weight="700" fill="#e8eaed">时间轴精修</text>
+  <text x="400" y="380" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="18" fill="#9aa0a6">起点对齐语音 · 时长随文本长度伸缩</text>
+
+  <!-- 6 角色化翻译（收尾强调：绿，对应 GUI 完成卡绿边框） -->
+  <circle cx="80" cy="426" r="16" fill="#3ddc97"/>
+  <text x="80" y="432" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="17" font-weight="700" fill="#10241b" text-anchor="middle">6</text>
+  <text x="128" y="433" font-family="-apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="21" font-weight="700" fill="#3ddc97">角色化翻译</text>
+  <text x="400" y="432" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="18" fill="#9aa0a6">Hy-MT2-7B Q4 · llama.cpp · 说话人作为角色上下文</text>
+
+  <!-- 输出 -->
+  <rect x="128" y="452" width="384" height="34" rx="8" fill="#1b2b24" stroke="#3ddc97"/>
+  <text x="148" y="475" font-family="'PingFang SC', 'Microsoft YaHei', sans-serif"
+        font-size="18" fill="#3ddc97">产出：视频名.zh.srt（可选 .ja.srt）</text>
+  <text x="536" y="475" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="16" fill="#7a8087">写在视频同目录，播放器自动加载</text>
+</svg>
