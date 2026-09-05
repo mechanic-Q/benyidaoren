@@ -149,6 +149,16 @@ class MainWindow(QMainWindow):
         self.err_lines = []
         self.preflight = []      # 全检结果行
         self.srv_info = ""
+        self.light_ok = None     # None=检查中, True/False=轻检结果
+
+        # 秒级操作 (全检/wslpath) 的看门狗: wsl.exe 被占用卡死时报错可重试,
+        # 不再永久停在「正在检查依赖」
+        self.wd_check = QTimer(self)
+        self.wd_check.setSingleShot(True)
+        self.wd_check.timeout.connect(self.on_check_timeout)
+        self.wd_conv = QTimer(self)
+        self.wd_conv.setSingleShot(True)
+        self.wd_conv.timeout.connect(self.on_conv_timeout)
 
         # ---- 进程 ----
         self.q_light = QProcess(self)
@@ -381,6 +391,7 @@ class MainWindow(QMainWindow):
     # ---------------- 轻检 (06: 启动时) ----------------
     def light_check(self):
         if not os.path.exists(WSL_EXE):
+            self.light_ok = False
             self.warn("未找到 wsl.exe (C:\\Windows\\System32\\wsl.exe)。请先安装 WSL。")
             return
         self.warn_text.setText("正在检查 WSL 环境 ...")
@@ -393,6 +404,7 @@ class MainWindow(QMainWindow):
             self.q_light.finished.disconnect(self.on_light_done)
         except RuntimeError:
             pass
+        self.light_ok = (code == 0)
         if code == 0:
             self.warnbar.hide()
         else:
@@ -483,6 +495,8 @@ class MainWindow(QMainWindow):
                 t["state"] = "pending"
         self.current = None
         self.running = False
+        self.wd_check.stop()
+        self.wd_conv.stop()
         append_log(self.log, "[已停止]", YELLOW)
         self.refresh_queue_ui()
         self.show_page("ready" if any(t["state"] == "pending" for t in self.queue)
@@ -504,14 +518,36 @@ class MainWindow(QMainWindow):
     def full_check(self):
         self.q_check.finished.connect(self.on_check_done, Qt.UniqueConnection)
         self.q_check.start(WSL_EXE, ["-d", DISTRO, "--", "bash", PREFLIGHT_SH])
+        self.wd_check.start(30000)
+
+    def on_check_timeout(self):
+        if self.q_check.state() == QProcess.NotRunning:
+            return
+        try:
+            self.q_check.finished.disconnect(self.on_check_done)
+        except RuntimeError:
+            pass
+        self.q_check.kill()
+        self.show_error("依赖检查超时", "WSL 30 秒无响应, 已中止。",
+                        "WSL 可能正在初始化或被其他程序占用。稍候点「重试」; "
+                        "若反复出现, 请在 PowerShell 运行 wsl --status 检查。")
 
     def on_check_done(self, code, _status):
         try:
             self.q_check.finished.disconnect(self.on_check_done)
         except RuntimeError:
             pass
+        self.wd_check.stop()
         out = bytes(self.q_check.readAllStandardOutput()).decode("utf-8", "replace")
         self.preflight = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        # 空输出防御: WSL 异常退出时行数不足, 不能当全检通过 (会漏检直跑)
+        if len(self.preflight) < len(HOST_CHECKS) + 1:
+            self.show_error("依赖检查无输出",
+                            f"WSL 返回异常 (收到 {len(self.preflight)} 行, "
+                            f"期望 {len(HOST_CHECKS) + 1} 行, rc={code})。",
+                            "WSL 可能被占用或异常退出。点「重试」; 若反复出现, "
+                            "请在 PowerShell 运行 wsl --status 检查。")
+            return
         miss = [ln for ln in self.preflight if ln.startswith("MISS")]
         self.srv_info = next((ln[4:] for ln in self.preflight if ln.startswith("SRV ")), "未知")
         if miss:
@@ -544,12 +580,25 @@ class MainWindow(QMainWindow):
         # wslpath 转换
         self.q_conv.finished.connect(self.on_conv_done, Qt.UniqueConnection)
         self.q_conv.start(WSL_EXE, ["-d", DISTRO, "--", "wslpath", "-u", task["win"]])
+        self.wd_conv.start(15000)
+
+    def on_conv_timeout(self):
+        if self.q_conv.state() == QProcess.NotRunning:
+            return
+        try:
+            self.q_conv.finished.disconnect(self.on_conv_done)
+        except RuntimeError:
+            pass
+        self.q_conv.kill()
+        self.show_error("路径转换超时", "WSL 15 秒无响应, 已中止。",
+                        "WSL 可能被其他程序占用。稍候点「重试」。")
 
     def on_conv_done(self, code, _status):
         try:
             self.q_conv.finished.disconnect(self.on_conv_done)
         except RuntimeError:
             pass
+        self.wd_conv.stop()
         task = self.current
         if code != 0:
             self.show_error("路径转换失败", f"wslpath rc={code}", "文件路径可能包含特殊字符。")
@@ -647,7 +696,14 @@ class MainWindow(QMainWindow):
         self.show_page("error")
 
     def copy_diag(self):
+        names = {0: "空态", 1: "运行中", 2: "完成", 3: "错误", 4: "就绪"}
+        pst = lambda q: "运行中" if q.state() != QProcess.NotRunning else "空闲"
+        light = ("检查中" if self.light_ok is None
+                 else "通过" if self.light_ok else "失败")
         rows = ["== 本译道人诊断 ==",
+                f"页面: {names[self.pages.currentIndex()]}  轻检: {light}",
+                f"进程: 全检={pst(self.q_check)} 路径={pst(self.q_conv)} "
+                f"执行={pst(self.q_run)}",
                 f"任务数: {len(self.queue)}  完成: {len([t for t in self.queue if t['state']=='done'])}"]
         rows += [f"{t['state']:>8}  {t['win']}" for t in self.queue]
         rows.append(f"翻译服务: {self.srv_info}")
