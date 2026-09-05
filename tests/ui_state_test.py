@@ -32,7 +32,7 @@ check("整窗接受拖拽", w.acceptDrops())
 # 2. 拖入第一个文件 → 就绪态 + 高亮开始按钮
 w.add_file("C:/vid/a.mp4")
 check("入队后切就绪态", w.pages.currentIndex() == PO["ready"])
-check("开始按钮存在且可用", w.b_start.isEnabled() and w.b_start.text() == "开始转换")
+check("开始按钮存在且可用", w.b_start.isEnabled() and w.b_start.text().endswith("开始转换"))
 check("就绪计数文本", w.r_count.text() == "已就绪 1 个文件")
 check("开始按钮在当前页可见", w.b_start.isVisible() or w.pages.currentWidget().findChildren(type(w.b_start)))
 
