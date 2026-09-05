@@ -15,6 +15,7 @@ import sys
 from PySide6.QtCore import QProcess, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QFileDialog,
     QFrame,
@@ -138,10 +139,13 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("本译道人 — 日语视频转中日双字幕")
         self.setWindowIcon(QIcon(ico))
         self.setMinimumSize(920, 640)
+        # 整窗拖拽: 任意页面 (含运行中) 拖入文件即排队, 是否开跑由开始按钮决定
+        self.setAcceptDrops(True)
 
         # ---- 状态 ----
         self.queue = []          # [{win, wsl, state: pending/working/done/failed}]
         self.current = None
+        self.running = False     # 从点开始到出错/完成/停止的整个运行窗口
         self.run_buf = ""
         self.stage = -1
         self.err_lines = []
@@ -192,14 +196,16 @@ class MainWindow(QMainWindow):
         t.setStyleSheet("font-weight:bold;")
         sv.addWidget(t)
         self.qlist = QListWidget()
+        self.qlist.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.qlist.setAcceptDrops(False)
         sv.addWidget(self.qlist, 1)
         row_q = QHBoxLayout()
-        b_add = QPushButton("添加")
-        b_add.clicked.connect(self.add_files_dialog)
-        b_rm = QPushButton("移除所选")
-        b_rm.clicked.connect(self.remove_selected)
-        row_q.addWidget(b_add)
-        row_q.addWidget(b_rm)
+        self.b_add = QPushButton("添加")
+        self.b_add.clicked.connect(self.add_files_dialog)
+        self.b_rm = QPushButton("移除所选")
+        self.b_rm.clicked.connect(self.remove_selected)
+        row_q.addWidget(self.b_add)
+        row_q.addWidget(self.b_rm)
         sv.addLayout(row_q)
         hint = QLabel("批量: 拖入多个文件自动排队依次转换")
         hint.setStyleSheet("color:#9aa0a6; font-size:11px;")
@@ -215,6 +221,37 @@ class MainWindow(QMainWindow):
         self.drop.file_dropped.connect(self.add_file)
         self.drop.clicked.connect(self.add_files_dialog)
         self.pages.addWidget(self.drop)
+        # 4 就绪 (队列非空待开始; 拖入不自动跑, 按钮触发)
+        w5 = QFrame()
+        w5.setObjectName("by")
+        v5 = QVBoxLayout(w5)
+        v5.addStretch(1)
+        self.r_count = QLabel(" ")
+        self.r_count.setAlignment(Qt.AlignCenter)
+        self.r_count.setStyleSheet("font-size:16px; font-weight:bold;")
+        r_hint = QLabel("点击开始转换 · 也可继续拖入或点「添加」追加排队")
+        r_hint.setAlignment(Qt.AlignCenter)
+        r_hint.setStyleSheet("color:#9aa0a6; font-size:12px;")
+        row5 = QHBoxLayout()
+        row5.addStretch(1)
+        self.b_start = QPushButton("开始转换")
+        self.b_start.setObjectName("start")
+        self.b_start.setStyleSheet(
+            f"QPushButton#start {{ background:{ACCENT}; color:white; padding:9px 34px;"
+            " font-size:14px; font-weight:bold; border:none; border-radius:6px; }"
+            "QPushButton#start:hover { background:#5c9bff; }"
+            "QPushButton#start:disabled { background:#2a2d33; color:#8a9099;"
+            " border:1px solid #34383f; }")
+        self.b_start.clicked.connect(self.on_start)
+        row5.addWidget(self.b_start)
+        row5.addStretch(1)
+        v5.addWidget(self.r_count)
+        v5.addSpacing(8)
+        v5.addWidget(r_hint)
+        v5.addSpacing(14)
+        v5.addLayout(row5)
+        v5.addStretch(1)
+        self.pages.addWidget(w5)
         # 1 运行
         w2 = QFrame()
         w2.setObjectName("by")
@@ -302,7 +339,7 @@ class MainWindow(QMainWindow):
         v4.addLayout(row4)
         v4.addStretch(1)
         self.pages.addWidget(w4)
-        self.page_of = {"empty": 0, "busy": 1, "done": 2, "error": 3}
+        self.page_of = {"empty": 0, "busy": 1, "done": 2, "error": 3, "ready": 4}
         right.addWidget(self.pages, 3)
 
         logbox = QFrame()
@@ -316,6 +353,7 @@ class MainWindow(QMainWindow):
         lt.setStyleSheet("color:#9aa0a6; font-size:11px; border:none;")
         lv.addWidget(lt)
         self.log = log_view()
+        self.log.setAcceptDrops(False)
         self.log.setStyleSheet("QPlainTextEdit { background:#1b1d21; color:#e8eaed;"
                                " border:none; }")
         lv.addWidget(self.log)
@@ -330,6 +368,15 @@ class MainWindow(QMainWindow):
     # ---------------- 进程通用 ----------------
     def show_page(self, name):
         self.pages.setCurrentIndex(self.page_of[name])
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        for u in e.mimeData().urls():
+            if u.isLocalFile():
+                self.add_file(u.toLocalFile())
 
     # ---------------- 轻检 (06: 启动时) ----------------
     def light_check(self):
@@ -373,8 +420,10 @@ class MainWindow(QMainWindow):
         self.refresh_queue_ui()
 
     def remove_selected(self):
+        # 运行中只许撤掉还没开跑的; 空闲时也可清理已完成/失败条目
+        removable = ("pending",) if self.running else ("pending", "failed", "done")
         for row in sorted({self.qlist.row(it) for it in self.qlist.selectedItems()}, reverse=True):
-            if row < len(self.queue) and self.queue[row]["state"] == "pending":
+            if row < len(self.queue) and self.queue[row]["state"] in removable:
                 self.queue.pop(row)
                 self.qlist.takeItem(row)
         self.refresh_queue_ui()
@@ -387,8 +436,26 @@ class MainWindow(QMainWindow):
                 self.qlist.item(i).setText(f"{base_name(t['win'])} · {marks[t['state']]}")
                 self.qlist.item(i).setForeground(QColor(colors[t["state"]]))
         busy = any(t["state"] == "working" for t in self.queue)
-        self.b_add.setEnabled(not busy)
-        self.b_rm.setEnabled(not busy)
+        off = self.running or busy
+        self.b_add.setEnabled(not off)
+        self.b_rm.setEnabled(not off)
+        startable = (not off and
+                     any(t["state"] in ("pending", "failed") for t in self.queue))
+        self.b_start.setEnabled(startable)
+        self.r_count.setText(
+            f"已就绪 {len([t for t in self.queue if t['state'] != 'done'])} 个文件")
+        # 页面流转: 运行中不打扰; 空队列回空态; 空态/就绪态/完成态下队列有活 → 就绪态
+        if off:
+            return
+        cur = self.pages.currentIndex()
+        if not self.queue:
+            self.show_page("empty")
+        elif any(t["state"] in ("pending", "failed") for t in self.queue):
+            if cur in (self.page_of["empty"], self.page_of["ready"],
+                       self.page_of["done"]):
+                self.show_page("ready")
+        elif cur == self.page_of["ready"]:
+            self.show_page("done")  # 就绪页删光新增后只剩已完成 → 回完成态
 
     # ---------------- 开始 / 停止 ----------------
     def on_start(self):
@@ -399,6 +466,7 @@ class MainWindow(QMainWindow):
         for t in self.queue:
             if t["state"] == "failed":
                 t["state"] = "pending"
+        self.running = True
         self.err_lines = []
         self.log.clear()
         self.refresh_queue_ui()
@@ -414,8 +482,11 @@ class MainWindow(QMainWindow):
             if t["state"] in ("working", "pending"):
                 t["state"] = "pending"
         self.current = None
+        self.running = False
         append_log(self.log, "[已停止]", YELLOW)
-        self.show_page("empty")
+        self.refresh_queue_ui()
+        self.show_page("ready" if any(t["state"] == "pending" for t in self.queue)
+                       else "empty")
 
     def open_folder(self):
         done = [t for t in self.queue if t["state"] == "done"]
@@ -558,6 +629,7 @@ class MainWindow(QMainWindow):
         return self.log.toPlainText()
 
     def finish_all(self):
+        self.running = False
         done = [t for t in self.queue if t["state"] == "done"]
         lines = []
         for t in done:
@@ -570,6 +642,7 @@ class MainWindow(QMainWindow):
         self.show_page("done")
 
     def show_error(self, msg, detail, hint):
+        self.running = False
         self.e_msg.setText(msg if not detail else f"{msg}\n{detail}")
         self.e_hint.setText(hint)
         self.show_page("error")
