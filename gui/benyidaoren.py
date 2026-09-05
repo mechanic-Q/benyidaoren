@@ -150,6 +150,7 @@ class MainWindow(QMainWindow):
         self.preflight = []      # 全检结果行
         self.srv_info = ""
         self.light_ok = None     # None=检查中, True/False=轻检结果
+        self.check_retries = 0   # 全检自动重试计数 (吃掉 WSL 冷启动抖动)
 
         # 秒级操作 (全检/wslpath) 的看门狗: wsl.exe 被占用卡死时报错可重试,
         # 不再永久停在「正在检查依赖」
@@ -407,6 +408,7 @@ class MainWindow(QMainWindow):
         self.light_ok = (code == 0)
         if code == 0:
             self.warnbar.hide()
+            self.refresh_queue_ui()
         else:
             self.warn(f"WSL / {DISTRO} 不可用 (rc={code})。"
                       f"请在 PowerShell 运行 wsl --status 检查; 重装后执行 wsl --update。")
@@ -451,7 +453,7 @@ class MainWindow(QMainWindow):
         off = self.running or busy
         self.b_add.setEnabled(not off)
         self.b_rm.setEnabled(not off)
-        startable = (not off and
+        startable = (not off and self.light_ok is True and
                      any(t["state"] in ("pending", "failed") for t in self.queue))
         self.b_start.setEnabled(startable)
         self.r_count.setText(
@@ -479,6 +481,7 @@ class MainWindow(QMainWindow):
             if t["state"] == "failed":
                 t["state"] = "pending"
         self.running = True
+        self.check_retries = 0
         self.err_lines = []
         self.log.clear()
         append_log(self.log, f"[开始] {len(pend)} 个任务, 依赖检查中 ...")
@@ -529,9 +532,7 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             pass
         self.q_check.kill()
-        self.show_error("依赖检查超时", "WSL 30 秒无响应, 已中止。",
-                        "WSL 可能正在初始化或被其他程序占用。稍候点「重试」; "
-                        "若反复出现, 请在 PowerShell 运行 wsl --status 检查。")
+        self._check_retry_or_fail("检查超时, WSL 30 秒无响应")
 
     def on_check_done(self, code, _status):
         try:
@@ -543,11 +544,8 @@ class MainWindow(QMainWindow):
         self.preflight = [ln.strip() for ln in out.splitlines() if ln.strip()]
         # 空输出防御: WSL 异常退出时行数不足, 不能当全检通过 (会漏检直跑)
         if len(self.preflight) < len(HOST_CHECKS) + 1:
-            self.show_error("依赖检查无输出",
-                            f"WSL 返回异常 (收到 {len(self.preflight)} 行, "
-                            f"期望 {len(HOST_CHECKS) + 1} 行, rc={code})。",
-                            "WSL 可能被占用或异常退出。点「重试」; 若反复出现, "
-                            "请在 PowerShell 运行 wsl --status 检查。")
+            self._check_retry_or_fail(
+                f"检查无输出 (收到 {len(self.preflight)} 行, rc={code})")
             return
         miss = [ln for ln in self.preflight if ln.startswith("MISS")]
         self.srv_info = next((ln[4:] for ln in self.preflight if ln.startswith("SRV ")), "未知")
@@ -561,6 +559,19 @@ class MainWindow(QMainWindow):
             return
         append_log(self.log, f"[预检] 依赖齐全; 翻译服务: {self.srv_info}")
         self.next_task()
+
+    def _check_retry_or_fail(self, why):
+        """WSL 冷启动/被占用导致的检查失败: 静默重试一次, 二次失败才进错误页。"""
+        if self.check_retries < 1:
+            self.check_retries += 1
+            append_log(self.log, f"[{why}] WSL 预热中, 自动重试 ({self.check_retries}/1) ...",
+                       YELLOW)
+            self.b_file.setText("WSL 预热中, 自动重试 ...")
+            QTimer.singleShot(2000, self.full_check)
+            return
+        self.show_error("依赖检查失败", why + "。",
+                        "WSL 可能正在初始化或被其他程序占用。稍候点「重试」; "
+                        "若反复出现, 请在 PowerShell 运行 wsl --status 检查。")
 
     # ---------------- 任务驱动 ----------------
     def next_task(self):

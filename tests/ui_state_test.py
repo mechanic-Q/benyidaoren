@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication
 
 app = QApplication(sys.argv)
 w = b.MainWindow()
+w.light_ok = True  # 测试无事件循环, 轻检信号不会返回; 模拟 WSL 轻检已通过
 PO = w.page_of
 fails = []
 
