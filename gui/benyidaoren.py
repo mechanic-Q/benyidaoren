@@ -239,16 +239,16 @@ class MainWindow(QMainWindow):
         self.r_count = QLabel(" ")
         self.r_count.setAlignment(Qt.AlignCenter)
         self.r_count.setStyleSheet("font-size:16px; font-weight:bold;")
-        r_hint = QLabel("点击开始转换 · 也可继续拖入或点「添加」追加排队")
+        r_hint = QLabel("文件已排队, 请点击下方按钮开始 · 也可继续拖入追加排队")
         r_hint.setAlignment(Qt.AlignCenter)
         r_hint.setStyleSheet("color:#9aa0a6; font-size:12px;")
         row5 = QHBoxLayout()
         row5.addStretch(1)
-        self.b_start = QPushButton("开始转换")
+        self.b_start = QPushButton("▶  开始转换")
         self.b_start.setObjectName("start")
         self.b_start.setStyleSheet(
             f"QPushButton#start {{ background:{ACCENT}; color:white; padding:9px 34px;"
-            " font-size:14px; font-weight:bold; border:none; border-radius:6px; }"
+            " font-size:16px; font-weight:bold; border:none; border-radius:8px; padding:11px 40px; }"
             "QPushButton#start:hover { background:#5c9bff; }"
             "QPushButton#start:disabled { background:#2a2d33; color:#8a9099;"
             " border:1px solid #34383f; }")
@@ -481,6 +481,7 @@ class MainWindow(QMainWindow):
         self.running = True
         self.err_lines = []
         self.log.clear()
+        append_log(self.log, f"[开始] {len(pend)} 个任务, 依赖检查中 ...")
         self.refresh_queue_ui()
         self.show_page("busy")
         self.b_file.setText("正在检查依赖 ...")
