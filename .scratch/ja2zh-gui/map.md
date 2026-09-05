@@ -20,7 +20,7 @@
 - [01-gui-framework](issues/01-gui-framework.md) — 定稿 PySide6（LGPL）：双候选本机实测到打包产物全绿后由用户亲选；QProcess 调 WSL 通过，onefile 48.5MB；Tkinter 对照同样全绿（11.2MB，tkdnd 打包存活）因观感让位，留作 fallback
 - [04-ui-prototype](issues/04-ui-prototype.md) — 定稿 D 融合版：A 的单栏主体（拖拽+7 阶段进度+常驻日志）+ B 的任务队列栏（批量排队）；完成态输出中日双字幕（流水线 keep_ja 已支持，GUI 默认开启）；**深色主题**（全部颜色显式指定）；设置页/历史记录不做；原型在 gui/ui_prototype.py。**2026-09-05 补遗（用户选 C）**：正式版曾漏掉开始入口（on_start 仅错误页重试可达，另有 self.b_add 未挂 self 的 AttributeError 与队列默认单选），已修——拖入不自动跑；队列非空即切「就绪页」显示高亮**开始转换**按钮；整窗任意页面（含运行中）拖入自动排队不打扰当前任务；运行窗口内添加/移除禁用，空闲时可清理已完成/失败条目；队列改 Ctrl/Shift 多选
 - [03-packaging](issues/03-packaging.md) — 定稿 PyInstaller onefile 单 exe「**本译道人.exe**」（用户定名，48.5MB 实测）+ 像素道士 .ico（gui/assets/benyidaoren.ico）；仅本机自用；壳（Windows GUI）与宿主（WSL 流水线+模型）分离，宿主不进包
-- [06-wsl-dependency-check](issues/06-wsl-dependency-check.md) — 定稿轻检启动（wsl+Ubuntu，<1s，缺→顶部黄条）+ 全检转换（venv/三模型，缺→内嵌错误卡+复制诊断+重试）；**8888 被占→随机不常用端口**（20000-32767 随机，避开 8888 顺延段；复用前校验 Hy-MT2 模型 id），端口项降为 GUI 信息性显示
+- [06-wsl-dependency-check](issues/06-wsl-dependency-check.md) — 定稿轻检启动（wsl+Ubuntu，<1s，缺→顶部黄条）+ 全检转换（venv/三模型，缺→内嵌错误卡+复制诊断+重试）；**8888 被占→随机不常用端口**（20000-32767 随机，避开 8888 顺延段；复用前校验 Hy-MT2 模型 id），端口项降为 GUI 信息性显示。**2026-09-05 补遗（0809.mp4 实测翻车后定稿）**：PREFLIGHT_SH 内联脚本经 wsl.exe 传参失真——$变量被吃空+引号错位（`[ -e $p ]` 退化 `[ -e ]` 恒真/恒假），全检假 MISS 全灭致首次点开始必报「缺少依赖文件」；且壳未合并 stderr，[ERR] 详情全丢成黑盒。定稿修法：**预检与执行脚本常驻 WSL 侧**（gui/host/preflight.sh、run_one.sh，bash 直接读文件语法不受限），GUI 仅以静态 argv 调用（无 $/引号/分号穿越）；四 QProcess 一律 MergedChannels；成功页⇔输出文件存在作为验收不变量（0809.mp4 全流程 70s 实测 PASS）
 
 ## Not yet specified
 
