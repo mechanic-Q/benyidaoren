@@ -90,10 +90,22 @@ out = sys.argv[2]
 # --- ASR ---
 from faster_whisper import WhisperModel
 asr = WhisperModel("%s", device="cuda", compute_type="float16")
+# 不用VAD: 音乐压过对白时 Silero 会整片漏检语音(实测本类内容19分钟对白全被切掉)
 segments, info = asr.transcribe(wav, language="ja", word_timestamps=True,
-    vad_filter=True, condition_on_previous_text=False, beam_size=5)
-seg_list = [{"start": round(s.start,2), "end": round(s.end,2), "text": s.text.strip()} for s in segments]
-print(f"ASR: {len(seg_list)} 段", flush=True)
+    condition_on_previous_text=False, beam_size=5, hallucination_silence_threshold=2.0)
+seg_list, n_skip = [], 0
+for s in segments:
+    span = s.end - s.start
+    # 质量过滤(镜像whisper窗口跳过规则): 高静音概率+低置信 = 音乐段强行出字
+    if s.no_speech_prob > 0.6 and s.avg_logprob < -1.0:
+        n_skip += 1; continue
+    text = s.text.strip()
+    # 守卫: 时长远超文本量的段 = 解码退化幻读, 时间轴不可信, 丢弃
+    if span > 10 and len(text) < span / 5:
+        print(f"[WARN] 丢弃退化段 {span:.0f}s/{len(text)}字: {text[:20]}", flush=True)
+        continue
+    seg_list.append({"start": round(s.start,2), "end": round(s.end,2), "text": text})
+print(f"ASR: {len(seg_list)} 段 (质量过滤 {n_skip} 段)", flush=True)
 
 # --- 音频载入(归一化铁律) ---
 import av
@@ -221,13 +233,18 @@ def run_pipeline(wav, out_json):
         print(f"[ERR] 性别判定失败:\n{r2.stdout[-600:]}{r2.stderr[-600:]}", file=sys.stderr); sys.exit(1)
 
 # ---------- 5. 翻译 ----------
-CTX = "背景：日剧对白字幕，两位角色：女性上司与男性下属（职场日常对话）。"
+# 通用背景: 不预设题材/身份(任何视频都适用), 只给 ASR 容错与惯用语规则
+# 需要特定题材语境时用 --ctx "本片背景：..." 附加
+CTX = ("背景：日语视频对白字幕（可能含成人向内容）。原文是语音识别结果，常有同音字错字或缺字，"
+       "按最可能的日语原意翻译。成人向语境的惯用语按实际含义意译（如 イク/行く=达到高潮，"
+       "不能译成字面的\"走/离开\"），语气助词自然化。")
+USER_CTX = ""   # --ctx 时填 " 本片背景：..."，默认空
 KANA = re.compile(r"[ぁ-ゖァ-ヺー]")
 
 def translate_one(ja, speaker):
-    role = "女上司" if speaker == "female" else "男下属"
+    role = "女性角色" if speaker == "female" else "男性角色"
     payload = {"messages": [{"role": "user",
-        "content": f"{CTX}以下是{role}说的话。将以下文本翻译为简体中文，注意只需要输出翻译后的结果，不要额外解释：\n\n`{ja}`"}],
+        "content": f"{CTX}{USER_CTX}以下是{role}说的话。将以下文本翻译为简体中文，注意只需要输出翻译后的结果，不要额外解释：\n\n`{ja}`"}],
         "max_tokens": 200, "temperature": 0.1}
     r = subprocess.run(["curl", "-s", "-m", "60", f"http://127.0.0.1:{PORT}/v1/chat/completions",
         "-H", "Content-Type: application/json", "-d", json.dumps(payload, ensure_ascii=False)],
@@ -249,6 +266,7 @@ def write_srt(path, items):
     open(path, "w", encoding="utf-8").write("\n".join(lines))
 
 def translate_stage(diar_json, out_zh, out_ja, keep_ja):
+    global USER_CTX
     print("[4/6] 合并同人相邻段 ...")
     diar = json.load(open(diar_json, encoding="utf-8"))
     merged = []
@@ -300,28 +318,58 @@ def translate_stage(diar_json, out_zh, out_ja, keep_ja):
         print(f"同时输出: {out_ja}")
 
 # ---------- main ----------
+class Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+    def write(self, data):
+        for s in self.streams: s.write(data)
+    def flush(self):
+        for s in self.streams: s.flush()
+
 def main():
     ap = argparse.ArgumentParser(description="日语视频 → 中文字幕")
     ap.add_argument("video", help="视频文件路径 (Windows路径亦可)")
     ap.add_argument("--out", default=None, help="输出目录 (默认=视频所在目录)")
     ap.add_argument("--keep-ja", action="store_true", help="同时输出日语SRT")
+    ap.add_argument("--ctx", default="", help="可选影片背景提示，如 --ctx \"本片背景：空姐与男乘客\"")
+    ap.add_argument("--translate-only", action="store_true",
+                    help="跳过音频/ASR/性别，用 /tmp/ja2zh/diar.json 重译（需同视频跑过完整流程）")
     args = ap.parse_args()
 
     video = os.path.abspath(args.video)
     if not os.path.exists(video):
         print(f"[ERR] 文件不存在: {video}", file=sys.stderr); sys.exit(1)
+    os.makedirs(TMP, exist_ok=True)
+    global USER_CTX
+    if args.ctx:
+        USER_CTX = f" {args.ctx.strip()}。" if not args.ctx.strip().endswith("。") else f" {args.ctx.strip()}"
+    log_f = open(os.path.join(TMP, "last_run.log"), "w", encoding="utf-8", buffering=1)
+    sys.stdout = Tee(sys.__stdout__, log_f)
+    sys.stderr = Tee(sys.__stderr__, log_f)
+    print(f"[RUN] {time.strftime('%F %T')}  {video}")
+    print(f"      mtime={time.strftime('%F %T', time.localtime(os.path.getmtime(video)))}")
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=nw=1:nk=1", video], capture_output=True, text=True)
+    if r.returncode == 0 and r.stdout.strip():
+        print(f"      duration={float(r.stdout.strip()):.1f}s")
+    # 刚写过 = 渲染/下载未完成的半成品, 音频轨不完整且时间轴错位
+    if time.time() - os.path.getmtime(video) < 90:
+        print(f"[ERR] 视频文件 {time.time()-os.path.getmtime(video):.0f}s 前还在写入, "
+              "疑似渲染/下载未完成, 请等文件完成后重跑", file=sys.stderr); sys.exit(1)
     outdir = args.out or os.path.dirname(video)
     base = os.path.splitext(os.path.basename(video))[0]
     out_zh = os.path.join(outdir, f"{base}.zh.srt")
     out_ja = os.path.join(outdir, f"{base}.ja.srt")
-    os.makedirs(TMP, exist_ok=True)
     wav = os.path.join(TMP, "audio16k.wav")
 
     srv = ensure_server()
     try:
-        extract_audio(video, wav)
         diar_json = os.path.join(TMP, "diar.json")
-        run_pipeline(wav, diar_json)
+        if args.translate_only:
+            print("[跳过] 音频/ASR/性别, 使用现有 diar.json 重译")
+        else:
+            extract_audio(video, wav)
+            run_pipeline(wav, diar_json)
         translate_stage(diar_json, out_zh, out_ja, args.keep_ja)
     finally:
         if srv:
